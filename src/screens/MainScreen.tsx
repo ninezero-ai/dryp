@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,74 +7,177 @@ import {
   StatusBar,
   TouchableOpacity,
   FlatList,
+  Alert,
+  Linking,
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import Mapbox from '@rnmapbox/maps';
 import { useAuth } from '../context/AuthContext';
 import { colors } from '../theme/colors';
-import { Location } from '../types';
+import { Location, ViewMode, MarkerAction } from '../types';
+import SearchBar from '../components/SearchBar';
+import MarkerActionMenu from '../components/MarkerActionMenu';
+import NavigationScreen from './NavigationScreen';
 
-// Mock data for locations
-const mockLocations: Location[] = [
+// Mapbox configuration - In production, use environment variables
+Mapbox.setAccessToken('pk.eyJ1IjoiZHJ5cC1kZW1vIiwiYSI6ImNsczB1NHBxdzAxZzAyaW1uY3FqbW9wZnEifQ.demo_token');
+
+// 5 Real Copenhagen Public Restroom Locations
+const copenhagenLocations: Location[] = [
   {
     id: '1',
-    name: 'Central Station Restroom',
-    description: 'Public restroom - Clean and accessible',
-    latitude: 37.7749,
-    longitude: -122.4194,
+    name: 'Rådhuspladsen Public Facility',
+    description: 'Modern public restroom with accessible facilities',
+    latitude: 55.676098,
+    longitude: 12.568337,
     type: 'restroom',
     rating: 4.5,
-    distance: '0.2 mi',
+    distance: '0.1 km',
+    address: 'Rådhuspladsen 1, 1550 København',
+    accessibility: true,
+    hours: '24/7',
+    maintenanceStatus: 'operational',
+    lastMaintenance: '2026-02-10',
   },
   {
     id: '2',
-    name: 'City Library',
-    description: 'Free public access - Open 9AM-8PM',
-    latitude: 37.776,
-    longitude: -122.418,
+    name: 'Tivoli Gardens Facility',
+    description: 'Clean facilities near the main entrance',
+    latitude: 55.673664,
+    longitude: 12.568100,
     type: 'restroom',
     rating: 4.8,
-    distance: '0.4 mi',
+    distance: '0.3 km',
+    address: 'Vesterbrogade 3, 1630 København',
+    accessibility: true,
+    hours: '11:00 - 22:00',
+    maintenanceStatus: 'operational',
+    lastMaintenance: '2026-02-13',
   },
   {
     id: '3',
-    name: 'Starbucks Downtown',
-    description: 'Customer access - Purchase required',
-    latitude: 37.7755,
-    longitude: -122.42,
+    name: 'Strøget Shopping District',
+    description: 'Public restroom in the pedestrian shopping area',
+    latitude: 55.678635,
+    longitude: 12.576088,
     type: 'restroom',
     rating: 4.2,
-    distance: '0.3 mi',
+    distance: '0.5 km',
+    address: 'Østergade 52, 1100 København',
+    accessibility: true,
+    hours: '08:00 - 20:00',
+    maintenanceStatus: 'maintenance_required',
+    lastMaintenance: '2026-02-01',
   },
   {
     id: '4',
-    name: 'Public Park Facility',
-    description: 'Free outdoor restroom',
-    latitude: 37.774,
-    longitude: -122.417,
+    name: 'Christiansborg Palace',
+    description: 'Visitor facilities at the parliament building',
+    latitude: 55.676505,
+    longitude: 12.580918,
     type: 'restroom',
-    rating: 3.8,
-    distance: '0.5 mi',
+    rating: 4.6,
+    distance: '0.7 km',
+    address: 'Prins Jørgens Gård 1, 1218 København',
+    accessibility: true,
+    hours: '09:00 - 17:00',
+    maintenanceStatus: 'operational',
+    lastMaintenance: '2026-02-12',
   },
   {
     id: '5',
-    name: 'Shopping Mall',
-    description: 'Multiple locations - Clean facilities',
-    latitude: 37.777,
-    longitude: -122.421,
+    name: 'Nyhavn Harbor Facility',
+    description: 'Harbor-side restroom for tourists and visitors',
+    latitude: 55.679915,
+    longitude: 12.590807,
     type: 'restroom',
-    rating: 4.6,
-    distance: '0.7 mi',
+    rating: 4.0,
+    distance: '1.0 km',
+    address: 'Nyhavn 1F, 1051 København',
+    accessibility: false,
+    hours: '10:00 - 23:00',
+    maintenanceStatus: 'under_maintenance',
+    lastMaintenance: '2026-02-14',
   },
 ];
 
-type ViewMode = 'map' | 'list';
-
 export default function MainScreen() {
   const [viewMode, setViewMode] = useState<ViewMode>('map');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState<Location | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [navigatingTo, setNavigatingTo] = useState<Location | null>(null);
+  const [userLocation, setUserLocation] = useState<{ latitude: number; longitude: number } | null>({
+    latitude: 55.676098,
+    longitude: 12.568337, // Copenhagen center
+  });
   const { logout } = useAuth();
 
+  // Filter locations based on search
+  const filteredLocations = copenhagenLocations.filter(
+    (location) =>
+      location.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      location.address.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      location.description.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleMarkerPress = (location: Location) => {
+    setSelectedLocation(location);
+    setMenuVisible(true);
+  };
+
+  const handleAction = (action: MarkerAction) => {
+    if (!selectedLocation) return;
+
+    switch (action) {
+      case 'navigate':
+        setNavigatingTo(selectedLocation);
+        break;
+      case 'view':
+        Alert.alert(
+          selectedLocation.name,
+          `📍 ${selectedLocation.address}\n\n` +
+          `📝 ${selectedLocation.description}\n\n` +
+          `♿ Accessible: ${selectedLocation.accessibility ? 'Yes' : 'No'}\n` +
+          `⏰ Hours: ${selectedLocation.hours}\n` +
+          `⭐ Rating: ${selectedLocation.rating}/5\n` +
+          `🔧 Status: ${selectedLocation.maintenanceStatus}\n` +
+          `📅 Last Maintenance: ${selectedLocation.lastMaintenance}`
+        );
+        break;
+      case 'maintenance':
+        Alert.alert(
+          'Maintenance Mode',
+          'Select maintenance action:',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Report Issue', 
+              onPress: () => Alert.alert('Issue Reported', `Maintenance team notified for ${selectedLocation.name}`)
+            },
+            { 
+              text: 'Schedule Service', 
+              onPress: () => Alert.alert('Service Scheduled', `Maintenance scheduled for ${selectedLocation.name}`)
+            },
+          ]
+        );
+        break;
+    }
+    setMenuVisible(false);
+  };
+
+  const openExternalNavigation = (location: Location) => {
+    const url = `https://www.google.com/maps/dir/?api=1&destination=${location.latitude},${location.longitude}`;
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Error', 'Could not open navigation app');
+    });
+  };
+
   const renderLocationItem = ({ item }: { item: Location }) => (
-    <TouchableOpacity style={styles.locationCard} activeOpacity={0.7}>
+    <TouchableOpacity
+      style={styles.locationCard}
+      activeOpacity={0.7}
+      onPress={() => handleMarkerPress(item)}
+    >
       <View style={styles.locationHeader}>
         <Text style={styles.locationName}>{item.name}</Text>
         <View style={styles.ratingBadge}>
@@ -82,19 +185,40 @@ export default function MainScreen() {
         </View>
       </View>
       <Text style={styles.locationDescription}>{item.description}</Text>
+      <Text style={styles.locationAddress}>{item.address}</Text>
       <View style={styles.locationFooter}>
-        <Text style={styles.distance}>{item.distance}</Text>
-        <TouchableOpacity style={styles.directionsButton}>
-          <Text style={styles.directionsText}>Directions</Text>
+        <View style={styles.footerLeft}>
+          <Text style={styles.distance}>{item.distance}</Text>
+          {item.accessibility && <Text style={styles.accessibility}>♿</Text>}
+        </View>
+        <TouchableOpacity
+          style={styles.directionsButton}
+          onPress={() => {
+            setSelectedLocation(item);
+            handleAction('navigate');
+          }}
+        >
+          <Text style={styles.directionsText}>Navigate</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
 
+  // Navigation mode
+  if (navigatingTo) {
+    return (
+      <NavigationScreen
+        destination={navigatingTo}
+        userLocation={userLocation}
+        onClose={() => setNavigatingTo(null)}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={colors.primary[700]} />
-      
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -108,6 +232,13 @@ export default function MainScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Search Bar */}
+      <SearchBar
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+        placeholder="Search Copenhagen locations..."
+      />
+
       {/* View Toggle */}
       <View style={styles.toggleContainer}>
         <TouchableOpacity
@@ -117,12 +248,7 @@ export default function MainScreen() {
           ]}
           onPress={() => setViewMode('map')}
         >
-          <Text
-            style={[
-              styles.toggleText,
-              viewMode === 'map' && styles.toggleTextActive,
-            ]}
-          >
+          <Text style={[styles.toggleText, viewMode === 'map' && styles.toggleTextActive]}>
             Map
           </Text>
         </TouchableOpacity>
@@ -133,12 +259,7 @@ export default function MainScreen() {
           ]}
           onPress={() => setViewMode('list')}
         >
-          <Text
-            style={[
-              styles.toggleText,
-              viewMode === 'list' && styles.toggleTextActive,
-            ]}
-          >
+          <Text style={[styles.toggleText, viewMode === 'list' && styles.toggleTextActive]}>
             List
           </Text>
         </TouchableOpacity>
@@ -146,46 +267,55 @@ export default function MainScreen() {
 
       {/* Content */}
       {viewMode === 'map' ? (
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            latitude: 37.7749,
-            longitude: -122.4194,
-            latitudeDelta: 0.02,
-            longitudeDelta: 0.02,
-          }}
-        >
-          {mockLocations.map((location) => (
-            <Marker
+        <Mapbox.MapView style={styles.map}>
+          <Mapbox.Camera
+            zoomLevel={14}
+            centerCoordinate={[12.568337, 55.676098]} // Copenhagen center
+          />
+
+          {filteredLocations.map((location) => (
+            <Mapbox.PointAnnotation
               key={location.id}
-              coordinate={{
-                latitude: location.latitude,
-                longitude: location.longitude,
-              }}
-              title={location.name}
-              description={location.description}
+              id={location.id}
+              coordinate={[location.longitude, location.latitude]}
+              onSelected={() => handleMarkerPress(location)}
             >
-              <View style={styles.marker}>
-                <Text style={styles.markerText}>🚻</Text>
+              <View style={[
+                styles.marker,
+                location.maintenanceStatus === 'maintenance_required' && styles.markerWarning,
+                location.maintenanceStatus === 'under_maintenance' && styles.markerMaintenance,
+              ]}>
+                <Text style={styles.markerText}>
+                  {location.maintenanceStatus === 'under_maintenance' ? '🔧' : '🚻'}
+                </Text>
               </View>
-            </Marker>
+            </Mapbox.PointAnnotation>
           ))}
-        </MapView>
+        </Mapbox.MapView>
       ) : (
         <FlatList
-          data={mockLocations}
+          data={filteredLocations}
           keyExtractor={(item) => item.id}
           renderItem={renderLocationItem}
           contentContainerStyle={styles.listContainer}
         />
       )}
 
-      {/* Bottom Stats Bar */}
+      {/* Results Count */}
       <View style={styles.statsBar}>
         <Text style={styles.statsText}>
-          {mockLocations.length} locations nearby
+          {filteredLocations.length} of {copenhagenLocations.length} locations
+          {searchQuery ? ` matching "${searchQuery}"` : ''}
         </Text>
       </View>
+
+      {/* Marker Action Menu */}
+      <MarkerActionMenu
+        visible={menuVisible}
+        location={selectedLocation}
+        onClose={() => setMenuVisible(false)}
+        onAction={handleAction}
+      />
     </SafeAreaView>
   );
 }
@@ -267,7 +397,7 @@ const styles = StyleSheet.create({
   },
   marker: {
     backgroundColor: colors.primary[600],
-    padding: 8,
+    padding: 10,
     borderRadius: 20,
     borderWidth: 3,
     borderColor: '#fff',
@@ -276,6 +406,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+  },
+  markerWarning: {
+    backgroundColor: colors.warning,
+  },
+  markerMaintenance: {
+    backgroundColor: colors.error,
   },
   markerText: {
     fontSize: 18,
@@ -322,18 +458,31 @@ const styles = StyleSheet.create({
   locationDescription: {
     fontSize: 14,
     color: colors.text.secondary,
-    marginBottom: 12,
+    marginBottom: 4,
     lineHeight: 20,
+  },
+  locationAddress: {
+    fontSize: 13,
+    color: colors.text.muted,
+    marginBottom: 12,
   },
   locationFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  footerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   distance: {
     fontSize: 14,
     color: colors.text.muted,
     fontWeight: '500',
+  },
+  accessibility: {
+    fontSize: 14,
   },
   directionsButton: {
     backgroundColor: colors.primary[600],

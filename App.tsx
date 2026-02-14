@@ -8,7 +8,11 @@ import MainScreen from './src/screens/MainScreen';
 const Stack = createNativeStackNavigator();
 
 function Navigation() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+
+  if (isLoading) {
+    return null; // Or a splash screen
+  }
 
   return (
     <NavigationContainer>

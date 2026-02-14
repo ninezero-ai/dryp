@@ -13,7 +13,16 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ninezero.dryp",
+      "config": {
+        "mapboxAccessToken": "YOUR_MAPBOX_ACCESS_TOKEN"
+      },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Dryp needs your location to show nearby restrooms and provide navigation.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Dryp needs your location to provide turn-by-turn navigation.",
+        "NSLocationAlwaysUsageDescription": "Dryp needs your location to provide turn-by-turn navigation."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -21,10 +30,41 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.ninezero.dryp",
+      "config": {
+        "mapboxAccessToken": "YOUR_MAPBOX_ACCESS_TOKEN"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Dryp needs your location to show nearby restrooms and provide navigation."
+        }
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsDownloadToken": "YOUR_MAPBOX_SECRET_TOKEN",
+          "RNMapboxMapsVersion": "11.0.0"
+        }
+      ],
+      [
+        "@badatgil/expo-mapbox-navigation",
+        {
+          "accessToken": "YOUR_MAPBOX_ACCESS_TOKEN"
+        }
+      ]
+    ]
   }
 }
